@@ -6,6 +6,8 @@ import { PageTransition, SectionHeading } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { chatWithGuide } from "@/lib/ai";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export const Route = createFileRoute("/app/guide")({
   head: () => ({ meta: [{ title: "AI Guide — PathWise AI" }] }),
@@ -104,13 +106,21 @@ function Guide() {
                 className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${
+                  className={`max-w-[85%] rounded-3xl px-5 py-4 text-sm shadow-sm ${
                     m.role === "user"
                       ? "gradient-brand text-white rounded-tr-sm"
-                      : "bg-secondary text-secondary-foreground rounded-tl-sm"
+                      : "bg-background border border-border text-foreground rounded-tl-sm"
                   }`}
                 >
-                  {m.text}
+                  {m.role === "user" ? (
+                    m.text
+                  ) : (
+                    <div className="prose prose-sm dark:prose-invert prose-p:leading-relaxed prose-pre:bg-secondary prose-pre:border prose-pre:border-border max-w-none">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {m.text}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             ))}
