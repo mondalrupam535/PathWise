@@ -16,6 +16,7 @@ export const Route = createFileRoute("/app/progress")({
 function ProgressPage() {
   const [profile, setProfile] = useState<any>({ skillSet: [], name: "Builder" });
   const [roadmap, setRoadmap] = useState<any[] | null>(null);
+  const [practiceCount, setPracticeCount] = useState(0);
   
   useEffect(() => {
     const loadData = () => {
@@ -24,11 +25,17 @@ function ProgressPage() {
         if (stored) setProfile(JSON.parse(stored));
         const r = localStorage.getItem("pw-roadmap");
         if (r) setRoadmap(JSON.parse(r));
+        const p = localStorage.getItem("pw-practices");
+        if (p) setPracticeCount(parseInt(p));
       } catch {}
     };
     loadData();
     window.addEventListener("profile-updated", loadData);
-    return () => window.removeEventListener("profile-updated", loadData);
+    window.addEventListener("practice-updated", loadData);
+    return () => {
+      window.removeEventListener("profile-updated", loadData);
+      window.removeEventListener("practice-updated", loadData);
+    };
   }, []);
 
   // Format skills for the bar chart with consistent pseudo-random levels
@@ -55,7 +62,7 @@ function ProgressPage() {
     { title: "Specialist", desc: `Added ${profile.skillSet.length} skills to your arsenal.`, earned: profile.skillSet.length > 0 },
     { title: "Roadmap Generated", desc: "AI created your personalized pathway.", earned: !!roadmap },
     { title: "First Milestone", desc: "Completed your first roadmap task.", earned: doneMilestones >= 1 },
-    { title: "Halfway There", desc: "Completed 50% of your roadmap.", earned: roadmap ? doneMilestones >= roadmap.length / 2 : false },
+    { title: "Practitioner", desc: "Completed your first practice question set.", earned: practiceCount > 0 },
     { title: "Job Hunter", desc: "Apply to 5 matched jobs.", earned: false },
   ];
 

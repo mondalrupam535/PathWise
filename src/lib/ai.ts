@@ -194,3 +194,58 @@ export const getRecommendedResource = createServerFn({ method: "POST" })
     }
   });
 
+export type PracticeQuestion = {
+  question: string;
+  options: string[];
+  answerIndex: number;
+  explanation: string;
+};
+
+export const generatePracticeQuestions = createServerFn({ method: "POST" })
+  .inputValidator((data: any) => data as { 
+    milestoneTitle: string; 
+    milestoneDesc: string;
+    role: string; 
+  })
+  .handler(async ({ data }): Promise<PracticeQuestion[]> => {
+    const question = `Generate 3 multiple-choice practice questions for a student learning about '${data.milestoneTitle}' (${data.milestoneDesc}). ` +
+      `The student is training for the role of ${data.role || "Software Engineer"}. ` +
+      `Return the response as a strict JSON array of objects. Do not wrap it in markdown block quotes. ` +
+      `Each object must have these exact keys: ` +
+      `'question' (the question text), ` +
+      `'options' (an array of exactly 4 plausible options), ` +
+      `'answerIndex' (the 0-based index of the correct option), ` +
+      `'explanation' (a brief 1-2 sentence explanation of why the answer is correct).`;
+
+    try {
+      const response = await client.chat.completions.create({
+        model: "llama-3.1-8b-instant",
+        messages: [{ role: "user", content: question }],
+        response_format: { type: "json_object" }
+      });
+      
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error("No content received.");
+      const parsed = JSON.parse(content);
+      
+      let questions: PracticeQuestion[] = [];
+      if (Array.isArray(parsed)) questions = parsed;
+      else {
+        for (const key in parsed) {
+          if (Array.isArray(parsed[key])) { questions = parsed[key]; break; }
+        }
+      }
+      return questions.slice(0, 3);
+    } catch (error) {
+      console.error("Error fetching practice questions:", error);
+      // Fallback
+      return [
+        {
+          question: `What is the primary purpose of ${data.milestoneTitle}?`,
+          options: ["To slow down development", "To solve a specific domain problem effectively", "To increase code size", "To replace all other tools"],
+          answerIndex: 1,
+          explanation: `Tools and concepts in ${data.milestoneTitle} are designed to solve specific problems efficiently in the domain.`
+        }
+      ];
+    }
+  });
