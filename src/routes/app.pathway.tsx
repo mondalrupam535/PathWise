@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, Circle, Lock, PlayCircle, Loader2, Youtube, GraduationCap, X, BookOpen } from "lucide-react";
 import { PageTransition, SectionHeading } from "@/components/page";
 import { Button } from "@/components/ui/button";
-import { getDynamicPathway, type PathwayMilestone } from "@/lib/ai";
+import { getDynamicPathway, getRecommendedResource, type PathwayMilestone } from "@/lib/ai";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 
@@ -19,18 +19,47 @@ function statusMeta(status: string) {
 }
 
 function LearnDialog({ step, onClose }: { step: PathwayMilestone; onClose: () => void }) {
-  const openResource = (type: "video" | "course") => {
-    const query = encodeURIComponent(step.title);
-    if (type === "video") {
-      window.open(`https://www.youtube.com/results?search_query=${query}`, "_blank");
-    } else {
-      window.open(
-        `https://www.google.com/search?q=free+course+${query}+site:coursera.org+OR+site:freecodecamp.org+OR+site:udemy.com+OR+site:edx.org`,
-        "_blank"
-      );
+  const [loadingType, setLoadingType] = useState<"video" | "course" | null>(null);
+
+  const openResource = async (type: "video" | "course") => {
+    setLoadingType(type);
+    try {
+      let profile = { role: "Software Engineer", skillSet: [] };
+      const stored = localStorage.getItem("pw-profile");
+      if (stored) profile = JSON.parse(stored);
+
+      const res = await getRecommendedResource({
+        data: {
+          type,
+          milestoneTitle: step.title,
+          milestoneDesc: step.desc,
+          role: profile.role,
+          skills: profile.skillSet
+        }
+      });
+
+      if (res && res.url) {
+        window.open(res.url, "_blank");
+      }
+    } catch (err) {
+      console.error(err);
+      // Fallback
+      const query = encodeURIComponent(step.title);
+      if (type === "video") {
+        window.open(`https://www.youtube.com/results?search_query=${query}+tutorial&sp=CAM%253D`, "_blank");
+      } else {
+        window.open(
+          `https://www.google.com/search?q=free+course+${query}+site:coursera.org+OR+site:freecodecamp.org+OR+site:udemy.com+OR+site:edx.org`,
+          "_blank"
+        );
+      }
+    } finally {
+      setLoadingType(null);
+      onClose();
     }
-    onClose();
   };
+
+  const isAnyLoading = loadingType !== null;
 
   return (
     <AnimatePresence>
@@ -54,7 +83,8 @@ function LearnDialog({ step, onClose }: { step: PathwayMilestone; onClose: () =>
             <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-brand-2/10" />
             <button
               onClick={onClose}
-              className="absolute right-4 top-4 rounded-full p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+              disabled={isAnyLoading}
+              className="absolute right-4 top-4 rounded-full p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground disabled:opacity-50"
             >
               <X className="h-4 w-4" />
             </button>
@@ -74,43 +104,80 @@ function LearnDialog({ step, onClose }: { step: PathwayMilestone; onClose: () =>
 
               {/* YouTube Videos */}
               <motion.button
-                whileHover={{ scale: 1.02, y: -2 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => openResource("video")}
-                className="group flex flex-col items-center gap-3 rounded-2xl border-2 border-border bg-background p-5 text-center transition-all hover:border-red-500/60 hover:bg-red-500/5 hover:shadow-lg hover:shadow-red-500/10"
+                whileHover={isAnyLoading ? {} : { scale: 1.02, y: -2 }}
+                whileTap={isAnyLoading ? {} : { scale: 0.97 }}
+                onClick={() => !isAnyLoading && openResource("video")}
+                disabled={isAnyLoading}
+                className={`group flex flex-col items-center gap-3 rounded-2xl border-2 border-border bg-background p-5 text-center transition-all ${
+                  isAnyLoading
+                    ? "opacity-50 cursor-not-allowed"
+                    : "hover:border-red-500/60 hover:bg-red-500/5 hover:shadow-lg hover:shadow-red-500/10"
+                }`}
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/10 text-red-500 transition group-hover:bg-red-500 group-hover:text-white">
-                  <Youtube className="h-6 w-6" />
+                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl transition ${
+                  loadingType === "video"
+                    ? "bg-red-500 text-white animate-pulse"
+                    : "bg-red-500/10 text-red-500 group-hover:bg-red-500 group-hover:text-white"
+                }`}>
+                  {loadingType === "video" ? (
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  ) : (
+                    <Youtube className="h-6 w-6" />
+                  )}
                 </div>
                 <div>
-                  <div className="font-display font-semibold text-sm">Watch Videos</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">Search on YouTube</div>
+                  <div className="font-display font-semibold text-sm">
+                    {loadingType === "video" ? "Analyzing..." : "Watch Videos"}
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {loadingType === "video" ? "Finding top video" : "Direct popular link"}
+                  </div>
                 </div>
               </motion.button>
 
               {/* Free Courses */}
               <motion.button
-                whileHover={{ scale: 1.02, y: -2 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => openResource("course")}
-                className="group flex flex-col items-center gap-3 rounded-2xl border-2 border-border bg-background p-5 text-center transition-all hover:border-primary/60 hover:bg-primary/5 hover:shadow-lg hover:shadow-primary/10"
+                whileHover={isAnyLoading ? {} : { scale: 1.02, y: -2 }}
+                whileTap={isAnyLoading ? {} : { scale: 0.97 }}
+                onClick={() => !isAnyLoading && openResource("course")}
+                disabled={isAnyLoading}
+                className={`group flex flex-col items-center gap-3 rounded-2xl border-2 border-border bg-background p-5 text-center transition-all ${
+                  isAnyLoading
+                    ? "opacity-50 cursor-not-allowed"
+                    : "hover:border-primary/60 hover:bg-primary/5 hover:shadow-lg hover:shadow-primary/10"
+                }`}
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-white">
-                  <GraduationCap className="h-6 w-6" />
+                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl transition ${
+                  loadingType === "course"
+                    ? "bg-primary text-white animate-pulse"
+                    : "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white"
+                }`}>
+                  {loadingType === "course" ? (
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  ) : (
+                    <GraduationCap className="h-6 w-6" />
+                  )}
                 </div>
                 <div>
-                  <div className="font-display font-semibold text-sm">Free Courses</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">Coursera, freeCodeCamp…</div>
+                  <div className="font-display font-semibold text-sm">
+                    {loadingType === "course" ? "Curating..." : "Free Courses"}
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {loadingType === "course" ? "Analyzing platform" : "Direct course link"}
+                  </div>
                 </div>
               </motion.button>
             </div>
-            <p className="mt-4 text-center text-xs text-muted-foreground">Opens in a new tab</p>
+            <p className="mt-4 text-center text-xs text-muted-foreground">
+              {isAnyLoading ? "AI is selecting the best premium free resource..." : "Opens in a new tab"}
+            </p>
           </div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
   );
 }
+
 
 function Pathway() {
   const [selectedStep, setSelectedStep] = useState<PathwayMilestone | null>(null);

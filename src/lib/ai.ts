@@ -139,3 +139,58 @@ export const chatWithGuide = createServerFn({ method: "POST" })
       return "I'm having trouble connecting to my brain right now. Try again soon!";
     }
   });
+
+export const getRecommendedResource = createServerFn({ method: "POST" })
+  .inputValidator((data: any) => data as { 
+    type: "video" | "course"; 
+    milestoneTitle: string; 
+    milestoneDesc: string;
+    role: string; 
+    skills: string[]; 
+  })
+  .handler(async ({ data }): Promise<{ url: string }> => {
+    const systemPrompt = `You are a professional educational resource curator. ` +
+      `Your task is to analyze the student's profile and current milestone, and provide a direct, high-quality, completely free URL for learning the topic. ` +
+      `For type = 'course': return a direct link to a completely free course on platforms like freeCodeCamp, Coursera (free audit tier), MDN Web Docs, edX, or Khan Academy that matches the milestone. ` +
+      `For type = 'video': return a direct YouTube video URL (e.g., https://www.youtube.com/watch?v=...) of an extremely popular, high-view, high-quality tutorial (like those from freeCodeCamp, Programming with Mosh, Traversy Media, Fireship, Net Ninja) that perfectly matches the milestone. ` +
+      `Ensure the URL is a real, direct, and well-known working URL. ` +
+      `If you are not 100% sure about a specific valid YouTube video ID, generate a search URL sorted by view count, which looks like: 'https://www.youtube.com/results?search_query=[topic]+tutorial&sp=CAM%253D'. This will ensure they see the most popular videos instantly. ` +
+      `Return the response as a strict JSON object with a single key 'url'. Do not include any other text, explanation, or markdown block quotes. ` +
+      `Example: { "url": "https://www.freecodecamp.org/learn/javascript-algorithms-and-data-structures/" }`;
+
+    const userMessage = `Student profile:\n` +
+      `- Target Role: ${data.role || "Software Engineer"}\n` +
+      `- Current Skills: ${data.skills?.join(", ") || "None"}\n` +
+      `Milestone:\n` +
+      `- Title: ${data.milestoneTitle}\n` +
+      `- Description: ${data.milestoneDesc}\n` +
+      `Resource Type requested: ${data.type}`;
+
+    try {
+      const response = await client.chat.completions.create({
+        model: "llama-3.1-8b-instant",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage }
+        ],
+        response_format: { type: "json_object" }
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error("No response from AI");
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed.url === "string" && parsed.url.startsWith("http")) {
+        return { url: parsed.url };
+      }
+      throw new Error("Invalid URL in AI response");
+    } catch (error) {
+      console.error("Error fetching recommended resource:", error);
+      const query = encodeURIComponent(data.milestoneTitle);
+      if (data.type === "video") {
+        return { url: `https://www.youtube.com/results?search_query=${query}+tutorial&sp=CAM%253D` };
+      } else {
+        return { url: `https://www.google.com/search?q=free+course+${query}+site:coursera.org+OR+site:freecodecamp.org+OR+site:udemy.com+OR+site:edx.org` };
+      }
+    }
+  });
+
