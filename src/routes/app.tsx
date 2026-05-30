@@ -1,16 +1,29 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Bell, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
 
 export const Route = createFileRoute("/app")({
   component: AppLayout,
 });
 
 function AppLayout() {
+  const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      localStorage.setItem("pw-initial-query", searchQuery.trim());
+      setSearchQuery("");
+      navigate({ to: "/app/guide" });
+    }
+  };
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
@@ -18,10 +31,15 @@ function AppLayout() {
         <SidebarInset className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/80 px-4 backdrop-blur">
             <SidebarTrigger />
-            <div className="relative ml-2 hidden max-w-sm flex-1 md:block">
+            <form onSubmit={handleSearch} className="relative ml-2 hidden max-w-sm flex-1 md:block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search anything…" className="rounded-full pl-9" />
-            </div>
+              <Input 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search anything…" 
+                className="rounded-full pl-9" 
+              />
+            </form>
             <div className="ml-auto flex items-center gap-1">
               <Button variant="ghost" size="icon" className="rounded-full">
                 <Bell className="h-4 w-4" />

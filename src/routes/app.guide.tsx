@@ -28,7 +28,35 @@ function Guide() {
       if (stored) p = JSON.parse(stored);
     } catch {}
     setProfile(p);
-    setMessages([{ role: "ai", text: `Hi ${p.name}! I'm your AI career mentor. Ask me anything about your path, skills, or next steps.` }]);
+    
+    const initialQuery = localStorage.getItem("pw-initial-query");
+    if (initialQuery) {
+      localStorage.removeItem("pw-initial-query");
+      const userMsg = { role: "user" as const, text: initialQuery };
+      setMessages([{ role: "ai", text: `Hi ${p.name}! I'm your AI career mentor. Let's explore your question: "${initialQuery}"` }, userMsg]);
+      
+      const doSearch = async () => {
+        setIsTyping(true);
+        try {
+          const reply = await chatWithGuide({ 
+            data: { 
+              profile: p, 
+              message: initialQuery, 
+              history: [{ role: "ai", text: `Hi ${p.name}! I'm your AI career mentor.` }] 
+            } 
+          });
+          setMessages(prev => [...prev, { role: "ai", text: reply }]);
+        } catch (e) {
+          setMessages(prev => [...prev, { role: "ai", text: "Sorry, I encountered an error." }]);
+        } finally {
+          setIsTyping(false);
+        }
+      };
+      
+      setTimeout(doSearch, 500);
+    } else {
+      setMessages([{ role: "ai", text: `Hi ${p.name}! I'm your AI career mentor. Ask me anything about your path, skills, or next steps.` }]);
+    }
   }, []);
 
   useEffect(() => {
