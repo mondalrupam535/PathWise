@@ -59,33 +59,46 @@ export type JobMatch = {
   match: number;
   tags: string[];
   salary: string;
+  type: "job" | "internship";
+  url: string;
 };
 
 export const getDynamicJobs = createServerFn({ method: "POST" })
-  .inputValidator((data: any) => data as { role: string; skills: string[] })
+  .inputValidator((data: any) => data as { role: string; skills: string[]; type: "job" | "internship"; customSearch?: string })
   .handler(async ({ data }): Promise<JobMatch[]> => {
-    const question = `Generate 5 realistic job postings that match a user seeking a role as a ${data.role || "Developer"}. ` +
-      `The user has these skills: ${data.skills?.join(", ") || "None"}. ` +
-      `Return the response as a strict JSON array of objects. ` +
+    const isInternship = data.type === "internship";
+    const searchContext = data.customSearch
+      ? `The user is searching for: "${data.customSearch}".`
+      : `The user is seeking a role as a ${data.role || "Developer"} with skills: ${data.skills?.join(", ") || "None"}.`;
+
+    const question =
+      `Generate 6 realistic ${isInternship ? "internship" : "full-time job"} postings. ` +
+      searchContext +
+      ` Return a strict JSON object with a single key "jobs" whose value is an array of objects. ` +
       `Each object must have these exact keys: ` +
-      `'id' (a sequential number), ` +
-      `'title' (the job title), ` +
-      `'company' (a realistic fake company name), ` +
-      `'location' (e.g. 'Remote', 'New York', 'London'), ` +
-      `'match' (a percentage match number between 70 and 99), ` +
-      `'tags' (an array of 3 string tags related to the job), ` +
-      `'salary' (a realistic salary range string, e.g. '$100k-$130k').`;
+      `'id' (sequential number starting from 1), ` +
+      `'title' (${isInternship ? "internship" : "job"} title), ` +
+      `'company' (realistic company name), ` +
+      `'location' (e.g. 'Remote', 'New York', 'London', 'Bangalore'), ` +
+      `'match' (integer between 70 and 99 representing skill match percentage), ` +
+      `'tags' (array of exactly 3 relevant skill/tech tags), ` +
+      `'salary' (${isInternship ? "monthly stipend like '$2,000/mo' or '$1,500/mo'" : "annual salary range like '$80k-$110k'"} — realistic for the role and location), ` +
+      `'type' (always the string "${data.type}"), ` +
+      `'url' (a REAL working LinkedIn Jobs search URL in this exact format: ` +
+      `https://www.linkedin.com/jobs/search/?keywords=TITLE_URL_ENCODED&location=LOCATION_URL_ENCODED ` +
+      `where TITLE_URL_ENCODED is the job title URL-encoded and LOCATION_URL_ENCODED is the location URL-encoded). ` +
+      `Example url: https://www.linkedin.com/jobs/search/?keywords=Frontend%20Engineer&location=Remote`;
 
     try {
       const response = await client.chat.completions.create({
         model: "llama-3.1-8b-instant",
         messages: [{ role: "user", content: question }],
-        response_format: { type: "json_object" }
+        response_format: { type: "json_object" },
       });
       const content = response.choices[0]?.message?.content;
       if (!content) throw new Error("No content received.");
       const parsed = JSON.parse(content);
-      
+
       let jobs: JobMatch[] = [];
       if (Array.isArray(parsed)) jobs = parsed;
       else {
@@ -93,7 +106,15 @@ export const getDynamicJobs = createServerFn({ method: "POST" })
           if (Array.isArray(parsed[key])) { jobs = parsed[key]; break; }
         }
       }
-      return jobs;
+
+      // Ensure every job has a valid fallback URL
+      return jobs.map((j) => ({
+        ...j,
+        type: data.type,
+        url: (j.url && j.url.startsWith("http"))
+          ? j.url
+          : `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(j.title)}&location=${encodeURIComponent(j.location)}`,
+      }));
     } catch (error) {
       console.error(error);
       return [];
@@ -247,5 +268,86 @@ export const generatePracticeQuestions = createServerFn({ method: "POST" })
           explanation: `Tools and concepts in ${data.milestoneTitle} are designed to solve specific problems efficiently in the domain.`
         }
       ];
+    }
+  });
+
+export type ResumeAnalysis = {
+  score: number;
+  headline: string;
+  summary: string;
+  strengths: string[];
+  suggestions: string[];
+  keywords: string[];
+  atsScore: number;
+};
+
+export const analyzeResume = createServerFn({ method: "POST" })
+  .inputValidator((data: any) => data as { resumeText: string; targetRole?: string })
+  .handler(async ({ data }): Promise<ResumeAnalysis> => {
+    const prompt =
+      `You are an expert resume reviewer and career coach. Analyze the following resume text and provide detailed, actionable feedback. ` +
+      `${data.targetRole ? `The candidate is targeting the role of: ${data.targetRole}.` : ""} ` +
+      `Return a strict JSON object (no markdown, no wrapping) with these exact keys:\n` +
+      `- 'score': a number from 0 to 100 representing overall resume quality\n` +
+      `- 'atsScore': a number from 0 to 100 representing ATS (Applicant Tracking System) compatibility\n` +
+      `- 'headline': a short 5-8 word verdict (e.g. "Strong resume with room to grow")\n` +
+      `- 'summary': one paragraph (2-3 sentences) summarizing the resume's overall impression\n` +
+      `- 'strengths': an array of 3-4 specific strengths found in the resume\n` +
+      `- 'suggestions': an array of 3-5 specific, actionable improvement suggestions\n` +
+      `- 'keywords': an array of 6-10 relevant industry keywords found or missing that should be added\n\n` +
+      `Resume text:\n${data.resumeText.slice(0, 4000)}`;
+
+    try {
+      const response = await client.chat.completions.create({
+        model: "llama-3.1-8b-instant",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+      });
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error("No content received.");
+      const parsed = JSON.parse(content);
+      return {
+        score: Number(parsed.score) || 70,
+        atsScore: Number(parsed.atsScore) || 65,
+        headline: parsed.headline || "Solid resume foundation",
+        summary: parsed.summary || "Your resume shows promise with opportunities to improve impact.",
+        strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+        keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
+      };
+    } catch (error) {
+      console.error("Error analyzing resume:", error);
+      return {
+        score: 70,
+        atsScore: 65,
+        headline: "Unable to analyze at this time",
+        summary: "We encountered an issue analyzing your resume. Please try again.",
+        strengths: ["Resume successfully uploaded"],
+        suggestions: ["Try again for a full AI analysis"],
+        keywords: [],
+      };
+    }
+  });
+
+export const improveResumeSection = createServerFn({ method: "POST" })
+  .inputValidator((data: any) => data as { text: string; sectionType: string; role: string })
+  .handler(async ({ data }): Promise<{ improved: string }> => {
+    const prompt =
+      `You are a professional resume writer. Rewrite the following ${data.sectionType} text to be more impactful, ` +
+      `using strong action verbs and quantifiable metrics where possible. ` +
+      `The candidate is targeting the role of: ${data.role || "Software Engineer"}. ` +
+      `Keep it concise (1-3 sentences max). Return ONLY the improved text, nothing else, no quotes, no explanation.\n\n` +
+      `Original text:\n${data.text}`;
+
+    try {
+      const response = await client.chat.completions.create({
+        model: "llama-3.1-8b-instant",
+        messages: [{ role: "user", content: prompt }],
+      });
+      const improved = response.choices[0]?.message?.content?.trim() || data.text;
+      return { improved };
+    } catch (error) {
+      console.error("Error improving resume section:", error);
+      return { improved: data.text };
     }
   });

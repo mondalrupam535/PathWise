@@ -214,3 +214,47 @@
     100% { transform: translate(4rem, -3rem) scale(1.15); }
   }
 }
+
+@media print {
+  /* Hide everything except the resume preview */
+  body > *:not(#__root),
+  header,
+  aside,
+  nav,
+  .resume-editor,
+  .resume-preview-pane > :not(#resume-preview),
+  [data-sidebar],
+  [data-sidebar-inset] > header {
+    display: none !important;
+  }
+
+  /* Show only the resume preview */
+  #resume-preview {
+    display: block !important;
+    margin: 0;
+    padding: 0;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    width: 100%;
+    max-width: 100%;
+    background: white !important;
+    color: black !important;
+    font-size: 12pt;
+  }
+
+  .resume-builder-layout {
+    display: block !important;
+  }
+
+  .resume-preview-pane {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  @page {
+    margin: 1.5cm;
+    size: A4;
+  }
+}
+
