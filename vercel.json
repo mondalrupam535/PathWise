@@ -2,7 +2,6 @@
   "buildCommand": "bun run build",
   "outputDirectory": ".",
   "framework": "other",
-  "nodeVersion": "20.x",
   "rewrites": [
     {
       "source": "/:path*",
