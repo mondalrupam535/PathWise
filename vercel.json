@@ -1,7 +1,7 @@
 {
   "buildCommand": "bun run build",
   "outputDirectory": ".",
-  "framework": "other",
+  "framework": "tanstack-start",
   "rewrites": [
     {
       "source": "/:path*",
