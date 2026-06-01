@@ -1,0 +1,14 @@
+[build]
+  base = ""
+  command = "bun run build"
+  publish = "dist/client"
+  functions = "dist/server"
+
+[[redirects]]
+  from = "/*"
+  to = "/"
+  status = 200
+
+[context.production.environment]
+  NODE_VERSION = "20"
+  # Add GROQ_API_KEY via Netlify dashboard → Site settings → Environment
